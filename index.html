@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calculator</title>
+<style>
+  :root {
+    --bg: #1c1f26;
+    --display-bg: #12141a;
+    --key: #2c313c;
+    --key-hover: #3a404d;
+    --key-text: #f2f4f8;
+    --op: #3d4657;
+    --accent: #ff8a3d;
+    --accent-hover: #ff9f5f;
+    --muted: #8b93a7;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 0%, #262b35, #12141a 70%);
+    font-family: "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
+    padding: 20px;
+  }
+
+  .calculator {
+    width: 100%;
+    max-width: 340px;
+    background: var(--bg);
+    border-radius: 20px;
+    padding: 20px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  }
+
+  .display {
+    background: var(--display-bg);
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+    text-align: right;
+    overflow: hidden;
+  }
+
+  .history {
+    min-height: 20px;
+    font-size: 15px;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .output {
+    font-size: 42px;
+    font-weight: 600;
+    color: var(--key-text);
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .keys {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  button {
+    border: none;
+    border-radius: 12px;
+    padding: 18px 0;
+    font-size: 20px;
+    font-weight: 500;
+    font-family: inherit;
+    color: var(--key-text);
+    background: var(--key);
+    cursor: pointer;
+    transition: background 0.12s ease, transform 0.06s ease;
+    user-select: none;
+  }
+
+  button:hover { background: var(--key-hover); }
+  button:active { transform: scale(0.96); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .op { background: var(--op); }
+  .op:hover { background: #4a5468; }
+
+  .accent { background: var(--accent); color: #1c1f26; font-weight: 700; }
+  .accent:hover { background: var(--accent-hover); }
+
+  .span-2 { grid-column: span 2; }
+
+  .equals { grid-row: span 2; }
+</style>
+</head>
+<body>
+  <main class="calculator" aria-label="Calculator">
+    <div class="display">
+      <div class="history" id="history">&nbsp;</div>
+      <div class="output" id="output" aria-live="polite">0</div>
+    </div>
+    <div class="keys">
+      <button class="accent" data-action="clear">C</button>
+      <button class="op" data-action="backspace" aria-label="Backspace">&#9003;</button>
+      <button class="op" data-op="/">&#247;</button>
+      <button class="op" data-op="*">&#215;</button>
+
+      <button data-num="7">7</button>
+      <button data-num="8">8</button>
+      <button data-num="9">9</button>
+      <button class="op" data-op="-">&#8722;</button>
+
+      <button data-num="4">4</button>
+      <button data-num="5">5</button>
+      <button data-num="6">6</button>
+      <button class="op" data-op="+">+</button>
+
+      <button data-num="1">1</button>
+      <button data-num="2">2</button>
+      <button data-num="3">3</button>
+      <button class="accent equals" data-action="equals">=</button>
+
+      <button class="span-2" data-num="0">0</button>
+      <button data-action="decimal">.</button>
+    </div>
+  </main>
+
+<script>
+(function () {
+  "use strict";
+
+  var outputEl = document.getElementById("output");
+  var historyEl = document.getElementById("history");
+
+  var current = "0";      // number currently being typed
+  var previous = null;    // stored operand
+  var operator = null;    // pending operator
+  var overwrite = true;   // next digit replaces the display
+  var justEvaluated = false;
+
+  function formatNumber(str) {
+    if (str === "Error") return str;
+    var negative = str.charAt(0) === "-";
+    if (negative) str = str.slice(1);
+
+    var parts = str.split(".");
+    var intPart = parts[0];
+    var decPart = parts.length > 1 ? parts[1] : null;
+
+    intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    var result = decPart !== null ? intPart + "." + decPart : intPart;
+    return (negative ? "-" : "") + result;
+  }
+
+  function render() {
+    outputEl.textContent = formatNumber(current);
+  }
+
+  function renderHistory(text) {
+    historyEl.innerHTML = text ? text : "&nbsp;";
+  }
+
+  function opSymbol(op) {
+    return { "+": "+", "-": "&#8722;", "*": "&#215;", "/": "&#247;" }[op] || op;
+  }
+
+  function compute(a, b, op) {
+    var x = parseFloat(a);
+    var y = parseFloat(b);
+    switch (op) {
+      case "+": return x + y;
+      case "-": return x - y;
+      case "*": return x * y;
+      case "/": return y === 0 ? NaN : x / y;
+      default: return y;
+    }
+  }
+
+  function toDisplayString(value) {
+    if (!isFinite(value)) return "Error";
+    // Round away floating point noise without losing large/small magnitudes.
+    var rounded = parseFloat(value.toPrecision(12));
+    if (Math.abs(rounded) >= 1e21 || (rounded !== 0 && Math.abs(rounded) < 1e-9)) {
+      return rounded.toExponential(6).replace(/\.?0+e/, "e");
+    }
+    return String(rounded);
+  }
+
+  function inputDigit(digit) {
+    if (justEvaluated) {
+      current = "0";
+      previous = null;
+      operator = null;
+      justEvaluated = false;
+      renderHistory("");
+    }
+    if (overwrite || current === "0") {
+      current = digit;
+      overwrite = false;
+    } else if (current.replace("-", "").replace(".", "").length < 15) {
+      current += digit;
+    }
+    render();
+  }
+
+  function inputDecimal() {
+    if (justEvaluated) {
+      current = "0";
+      previous = null;
+      operator = null;
+      justEvaluated = false;
+      renderHistory("");
+    }
+    if (overwrite) {
+      current = "0.";
+      overwrite = false;
+    } else if (current.indexOf(".") === -1) {
+      current += ".";
+    }
+    render();
+  }
+
+  function chooseOperator(op) {
+    justEvaluated = false;
+
+    if (operator !== null && !overwrite) {
+      var result = compute(previous, current, operator);
+      if (!isFinite(result)) {
+        current = "Error";
+        previous = null;
+        operator = null;
+        overwrite = true;
+        render();
+        renderHistory("");
+        return;
+      }
+      previous = toDisplayString(result);
+      current = previous;
+      render();
+    } else if (previous === null) {
+      previous = current;
+    }
+
+    operator = op;
+    overwrite = true;
+    renderHistory(formatNumber(previous) + " " + opSymbol(op));
+  }
+
+  function evaluate() {
+    if (operator === null || previous === null) return;
+
+    var result = compute(previous, current, operator);
+    renderHistory(formatNumber(previous) + " " + opSymbol(operator) + " " + formatNumber(current) + " =");
+
+    current = toDisplayString(result);
+    previous = null;
+    operator = null;
+    overwrite = true;
+    justEvaluated = true;
+    render();
+  }
+
+  function clearAll() {
+    current = "0";
+    previous = null;
+    operator = null;
+    overwrite = true;
+    justEvaluated = false;
+    render();
+    renderHistory("");
+  }
+
+  function backspace() {
+    if (justEvaluated || overwrite || current === "Error") {
+      current = "0";
+      overwrite = true;
+      render();
+      return;
+    }
+    current = current.slice(0, -1);
+    if (current === "" || current === "-") {
+      current = "0";
+      overwrite = true;
+    }
+    render();
+  }
+
+  document.querySelector(".keys").addEventListener("click", function (event) {
+    var btn = event.target.closest("button");
+    if (!btn) return;
+
+    if (btn.dataset.num !== undefined) return inputDigit(btn.dataset.num);
+    if (btn.dataset.op !== undefined) return chooseOperator(btn.dataset.op);
+
+    switch (btn.dataset.action) {
+      case "decimal": return inputDecimal();
+      case "equals": return evaluate();
+      case "clear": return clearAll();
+      case "backspace": return backspace();
+    }
+  });
+
+  document.addEventListener("keydown", function (event) {
+    var key = event.key;
+
+    if (key >= "0" && key <= "9") {
+      inputDigit(key);
+    } else if (key === "." || key === ",") {
+      inputDecimal();
+    } else if (key === "+" || key === "-" || key === "*" || key === "/") {
+      chooseOperator(key);
+    } else if (key === "Enter" || key === "=") {
+      event.preventDefault();
+      evaluate();
+    } else if (key === "Backspace") {
+      backspace();
+    } else if (key === "Escape" || key === "Delete") {
+      clearAll();
+    } else {
+      return;
+    }
+    event.preventDefault();
+  });
+
+  clearAll();
+})();
+</script>
+</body>
+</html>
